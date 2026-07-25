@@ -8,13 +8,13 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from aegis_ueba.detection.contextual_rules import contextual_score
+from aegis_ueba.detection.contextual_rules import contextual_attack_prediction, contextual_score
 from aegis_ueba.detection.risk_engine import combine_scores, severity_band
 from aegis_ueba.explainability.explanations import build_explanations
 from aegis_ueba.features.preprocessing import build_transformer, engineer_features, transform_features
 from aegis_ueba.features.sequence_builder import build_sequences
 from aegis_ueba.models.attack_classifier import AttackClassifier
-from aegis_ueba.models.calibration import percentile_threshold
+from aegis_ueba.models.calibration import optimal_f1_threshold, percentile_threshold
 from aegis_ueba.models.gru_autoencoder import GruSequenceAutoencoder
 from aegis_ueba.models.isolation_baseline import IsolationBaseline
 from aegis_ueba.models.statistical_baseline import StatisticalBaseline
@@ -45,22 +45,30 @@ class HybridDetector:
         self.transformer = None
         self.threshold = 0.5
         self.sequence_threshold = 0.5
+        self.cold_start_entities: set[str] = set()
         self.drift = DriftManager(
             safe_threshold=config["risk"]["safe_profile_update_threshold"],
             alpha=config["drift"]["ewma_alpha"],
             min_trusted_observations=config["drift"]["min_trusted_observations"],
         )
 
-    def fit(self, train_df: pd.DataFrame, val_df: pd.DataFrame) -> dict[str, float]:
+    def fit(self, train_df: pd.DataFrame, val_df: pd.DataFrame, cold_start_entities: set[str] | None = None) -> dict[str, float]:
         train_feat = engineer_features(train_df)
         val_feat = engineer_features(val_df)
         normal_train = train_feat[train_feat["is_anomaly"] == 0].copy()
+        all_entities = sorted(normal_train["entity_id"].unique().tolist())
+        if cold_start_entities is not None:
+            self.cold_start_entities = set(cold_start_entities)
+        else:
+            holdout_n = max(1, int(len(all_entities) * self.config["features"].get("cold_start_holdout_fraction", 0.0)))
+            self.cold_start_entities = set(all_entities[:holdout_n])
         self.transformer = build_transformer(normal_train)
         x_train = transform_features(normal_train, self.transformer)
         x_val = transform_features(val_feat, self.transformer)
-        self.entity_store.fit(normal_train)
-        self.peer_store.fit(normal_train)
-        self.statistical.fit(normal_train)
+        profile_train = normal_train[~normal_train["entity_id"].isin(self.cold_start_entities)].copy()
+        self.entity_store.fit(profile_train)
+        self.peer_store.fit(profile_train)
+        self.statistical.fit(profile_train)
         self.isolation = IsolationBaseline(self.config["models"]["isolation_contamination"], self.seed).fit(x_train)
         seq_len = self.config["features"]["sequence_length"]
         train_seq, _ = build_sequences(x_train, normal_train["entity_id"].tolist(), seq_len)
@@ -97,7 +105,7 @@ class HybridDetector:
             unknown_threshold=self.config["models"]["classifier_unknown_threshold"],
         ).fit(x_cls, y_cls)
         val_scored = self.score(val_df, update_profiles=False)
-        self.threshold = float(np.quantile(val_scored["risk_score"], self.config["risk"]["threshold_percentile"]))
+        self.threshold = float(optimal_f1_threshold(val_scored["risk_score"].to_numpy() / 100.0, val_scored["is_anomaly"].to_numpy()) * 100.0)
         return {"gru_train_loss": gru_result.train_loss, "gru_val_loss": gru_result.val_loss, "risk_threshold": self.threshold}
 
     def score(self, frame: pd.DataFrame, update_profiles: bool = False) -> pd.DataFrame:
@@ -118,6 +126,7 @@ class HybridDetector:
             entity_meta = self.entity_store.score(row)
             peer_dev = self.peer_store.score(row)
             contextual, reasons = contextual_score(row, self.config["features"]["velocity_kmh_threshold"])
+            ctx_label, ctx_conf, ctx_source = contextual_attack_prediction(row, self.config["features"]["velocity_kmh_threshold"])
             auth_severity = min(1.0, float(row["failed_attempt_count"]) / 10.0)
             resource_criticality = 1.0 if row["resource_accessed"] in {"finance_db", "admin_console", "backup_server", "ot_controller"} else 0.2
             components = {
@@ -135,6 +144,15 @@ class HybridDetector:
                 for key, value in components.items()
             }
             explanation_text = build_explanations(reasons)
+            final_label = str(labels[i])
+            final_conf = float(confidence[i])
+            classification_source = "ml"
+            if ctx_label is not None and (final_label == "unknown_anomaly" or ctx_conf >= final_conf):
+                final_label = ctx_label
+                final_conf = ctx_conf
+                classification_source = ctx_source
+            elif ctx_label is not None and final_label == ctx_label:
+                classification_source = "ml+contextual"
             outputs.append(
                 {
                     **row.to_dict(),
@@ -146,8 +164,9 @@ class HybridDetector:
                     "contextual_score": float(contextual),
                     "risk_score": float(risk),
                     "severity": severity_band(risk),
-                    "predicted_attack_type": str(labels[i]),
-                    "classifier_confidence": float(confidence[i]),
+                    "predicted_attack_type": final_label,
+                    "classifier_confidence": final_conf,
+                    "classification_source": classification_source,
                     "cold_start": int(entity_meta["cold_start"]),
                     "drift_badge": "warming" if entity_meta["cold_start"] else "stable",
                     "reasons": " | ".join(explanation_text),
@@ -155,6 +174,7 @@ class HybridDetector:
                     "risk_component_total": components,
                     "top_contributing_factors": self._top_factors(component_contributions),
                     "profile_confidence": float(1.0 - entity_meta["cold_start"]),
+                    "baseline_source": str(entity_meta.get("baseline_source", "entity")),
                 }
             )
             if update_profiles:
@@ -171,8 +191,8 @@ class HybridDetector:
 
     def save(self, root: str | Path) -> DetectionArtifacts:
         root = Path(root)
-        model_dir = root / "artifacts" / "models"
-        pre_dir = root / "artifacts" / "preprocessors"
+        model_dir = root / "models"
+        pre_dir = root / "preprocessors"
         model_dir.mkdir(parents=True, exist_ok=True)
         pre_dir.mkdir(parents=True, exist_ok=True)
         bundle = {
@@ -198,9 +218,10 @@ class HybridDetector:
             bundle_path=bundle_path,
         )
 
-    def replay(self, scored_frame: pd.DataFrame) -> dict[str, float]:
-        metrics = replay_events(scored_frame)
+    def replay(self, frame: pd.DataFrame) -> dict[str, float]:
+        metrics = replay_events(frame, scorer=lambda batch: self.score(batch, update_profiles=False), batch_size=max(1, self.config["replay"].get("micro_batch_size", 1)))
         return {
+            "total_duration_seconds": metrics.total_duration_seconds,
             "avg_latency_ms": metrics.avg_latency_ms,
             "p50_latency_ms": metrics.p50_latency_ms,
             "p95_latency_ms": metrics.p95_latency_ms,

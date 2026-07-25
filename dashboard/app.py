@@ -12,9 +12,15 @@ from styles import CYBER_CSS
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCORED_PATH = ROOT / "artifacts" / "sample_alerts" / "scored_test_events.csv"
-METRICS_PATH = ROOT / "artifacts" / "metrics" / "metrics.json"
-SAMPLE_ALERTS_PATH = ROOT / "artifacts" / "sample_alerts" / "sample_alerts.json"
+LATEST_RUN = ROOT / "artifacts" / "latest_run.json"
+if LATEST_RUN.exists():
+    latest = json.loads(LATEST_RUN.read_text(encoding="utf-8"))
+    ARTIFACT_ROOT = ROOT / latest["artifact_root"]
+else:
+    ARTIFACT_ROOT = ROOT / "artifacts" / "default"
+SCORED_PATH = ARTIFACT_ROOT / "sample_alerts" / "scored_test_events.csv"
+METRICS_PATH = ARTIFACT_ROOT / "metrics" / "metrics.json"
+SAMPLE_ALERTS_PATH = ARTIFACT_ROOT / "sample_alerts" / "sample_alerts.json"
 
 st.set_page_config(page_title="AegisUEBA", layout="wide")
 st.markdown(CYBER_CSS, unsafe_allow_html=True)

@@ -51,7 +51,7 @@ class EntityProfileStore:
     def score(self, row: pd.Series) -> dict[str, float]:
         state = self.get(str(row["entity_id"]))
         if state is None or state.trusted_events == 0:
-            return {"entity_deviation": 0.35, "cold_start": 1.0}
+            return {"entity_deviation": 0.35, "cold_start": 1.0, "baseline_source": "global_peer"}
         hour_freq = state.hours[int(row["hour"])] / max(1, sum(state.hours.values()))
         country_freq = state.countries[str(row["source_country"])] / max(1, sum(state.countries.values()))
         resource_freq = state.resources[str(row["resource_accessed"])] / max(1, sum(state.resources.values()))
@@ -60,4 +60,4 @@ class EntityProfileStore:
         duration_dev = abs(float(row["session_duration"]) - state.duration_mean) / max(1.0, state.duration_mean)
         deviation = 1 - np.mean([hour_freq, country_freq, resource_freq, fp_freq])
         deviation = float(np.clip(0.6 * deviation + 0.2 * min(1.0, upload_dev) + 0.2 * min(1.0, duration_dev), 0.0, 1.0))
-        return {"entity_deviation": deviation, "cold_start": 0.0}
+        return {"entity_deviation": deviation, "cold_start": 0.0, "baseline_source": "entity"}

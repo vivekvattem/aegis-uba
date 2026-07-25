@@ -19,8 +19,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
-    _ = load_config(ROOT / args.config)
-    path = ROOT / "artifacts" / "sample_alerts" / "scored_test_events.csv"
+    config = load_config(ROOT / args.config)
+    path = ROOT / config.project["output_dir"] / "sample_alerts" / "scored_test_events.csv"
     frame = pd.read_csv(path)
     metrics = replay_events(frame)
     print(metrics)

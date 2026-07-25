@@ -1,14 +1,15 @@
 project:
   name: aegis-ueba
   seed: 42
-  output_dir: artifacts
+  output_dir: artifacts/default
+  run_name: default
 
 data:
-  entities: 500
-  days: 45
-  events_per_entity_min: 80
-  events_per_entity_max: 180
-  anomaly_rate: 0.015
+  entities: 520
+  days: 60
+  events_per_entity_min: 100
+  events_per_entity_max: 170
+  anomaly_rate: 0.02
   entity_type_mix:
     user: 0.7
     service_account: 0.15
@@ -22,6 +23,8 @@ data:
     low_and_slow_exfiltration: 0.15
     insider_drift: 0.05
   sensitive_resource_ratio: 0.15
+  campaigns_per_attack: 6
+  data_subdir: default
 
 features:
   rolling_windows_minutes: [5, 15, 60, 1440]
@@ -29,6 +32,7 @@ features:
   sequence_length: 12
   min_history_for_entity_profile: 8
   peer_group_columns: ["entity_type", "role"]
+  cold_start_holdout_fraction: 0.1
 
 split:
   train: 0.6
@@ -66,5 +70,5 @@ drift:
   min_trusted_observations: 5
 
 replay:
-  micro_batch_size: 1
+  micro_batch_size: 50
   sleep_seconds: 0.0

@@ -1,7 +1,8 @@
 project:
   name: aegis-ueba
   seed: 42
-  output_dir: artifacts
+  output_dir: artifacts/fast
+  run_name: fast
 
 data:
   entities: 120
@@ -22,6 +23,8 @@ data:
     low_and_slow_exfiltration: 0.15
     insider_drift: 0.05
   sensitive_resource_ratio: 0.15
+  campaigns_per_attack: 3
+  data_subdir: fast
 
 features:
   rolling_windows_minutes: [5, 15, 60, 1440]
@@ -29,6 +32,7 @@ features:
   sequence_length: 10
   min_history_for_entity_profile: 6
   peer_group_columns: ["entity_type", "role"]
+  cold_start_holdout_fraction: 0.1
 
 split:
   train: 0.6
@@ -66,5 +70,5 @@ drift:
   min_trusted_observations: 4
 
 replay:
-  micro_batch_size: 1
+  micro_batch_size: 25
   sleep_seconds: 0.0

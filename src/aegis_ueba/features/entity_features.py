@@ -26,4 +26,26 @@ def add_entity_history_features(frame: pd.DataFrame) -> pd.DataFrame:
             velocities.append(velocity_kmh(dist, float(row["time_since_prev_hours"])))
     df["distance_from_prev_km"] = distances
     df["geo_velocity_kmh"] = velocities
+    df["new_country_indicator"] = (df["source_country"] != df["prev_country"]).fillna(False).astype(int)
+
+    new_resource = []
+    new_fingerprint = []
+    prior_resource_count = []
+    prior_fingerprint_count = []
+    for _, group in df.groupby("entity_id", sort=False):
+        seen_resources: set[str] = set()
+        seen_fingerprints: set[str] = set()
+        for _, row in group.iterrows():
+            resource = str(row["resource_accessed"])
+            fingerprint = str(row["device_fingerprint"])
+            new_resource.append(int(resource not in seen_resources))
+            new_fingerprint.append(int(fingerprint not in seen_fingerprints))
+            prior_resource_count.append(len(seen_resources))
+            prior_fingerprint_count.append(len(seen_fingerprints))
+            seen_resources.add(resource)
+            seen_fingerprints.add(fingerprint)
+    df["new_resource_indicator"] = new_resource
+    df["new_fingerprint_indicator"] = new_fingerprint
+    df["prior_resource_count"] = prior_resource_count
+    df["prior_fingerprint_count"] = prior_fingerprint_count
     return df

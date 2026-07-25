@@ -27,7 +27,7 @@ def _sample_commands(command_pool: list[str], rng: np.random.Generator) -> str:
     return "|".join(rng.choice(command_pool, size=length, replace=False).tolist())
 
 
-def generate_synthetic_dataset(config: dict, seed: int) -> pd.DataFrame:
+def generate_synthetic_dataset(config: dict, seed: int, split_config: dict | None = None) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     start = datetime(2026, 1, 1, 0, 0, 0)
     profiles = build_entity_profiles(config, rng)
@@ -74,15 +74,15 @@ def generate_synthetic_dataset(config: dict, seed: int) -> pd.DataFrame:
                 }
             )
     events = pd.DataFrame(rows).sort_values("timestamp").reset_index(drop=True)
-    events = inject_attacks(events, config, rng)
+    events = inject_attacks(events, config, rng, split_config=split_config)
     return events[REQUIRED_FIELDS]
 
 
-def save_datasets(events: pd.DataFrame, root: str | Path) -> dict[str, Path]:
+def save_datasets(events: pd.DataFrame, root: str | Path, subdir: str = "default") -> dict[str, Path]:
     root = Path(root)
-    raw_dir = root / "data" / "raw"
-    processed_dir = root / "data" / "processed"
-    inference_dir = root / "data" / "inference"
+    raw_dir = root / "data" / "raw" / subdir
+    processed_dir = root / "data" / "processed" / subdir
+    inference_dir = root / "data" / "inference" / subdir
     raw_dir.mkdir(parents=True, exist_ok=True)
     processed_dir.mkdir(parents=True, exist_ok=True)
     inference_dir.mkdir(parents=True, exist_ok=True)

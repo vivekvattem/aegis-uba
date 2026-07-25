@@ -27,7 +27,7 @@ def main() -> None:
         root / "scripts" / "run_pipeline.py",
         root / "dashboard" / "app.py",
         root / "docs" / "report.md",
-        root / "artifacts" / "metrics" / "metrics.json",
+        root / "artifacts" / "default" / "metrics" / "metrics.json",
     ]
     missing = [str(path.relative_to(root)) for path in required if not path.exists()]
     if missing:
@@ -43,8 +43,12 @@ def main() -> None:
                 continue
             if ".mplconfig" in path.parts:
                 continue
+            rel = path.relative_to(root) if path.exists() else None
+            if rel is not None and len(rel.parts) >= 2 and rel.parts[0] == "artifacts" and rel.parts[1] not in {"default", "fast", "demo", "latest_run.json"}:
+                continue
+            if rel is not None and len(rel.parts) >= 2 and rel.parts[0] == "data" and rel.parts[1] in {"raw", "inference"} and len(rel.parts) == 3:
+                continue
             if path.is_file() and path != output:
-                rel = path.relative_to(root)
                 archive.write(path, rel)
                 included_files.append(str(rel))
     manifest.write_text(
@@ -55,8 +59,8 @@ def main() -> None:
                 f"- `source_code.zip`: packaged project source created on {__import__('datetime').datetime.utcnow().isoformat()}Z",
                 "- `docs/report.md`: report source",
                 "- `docs/presentation_outline.md`: presentation source",
-                "- `artifacts/metrics/metrics.json`: generated metrics summary",
-                "- `artifacts/sample_alerts/scored_test_events.csv`: dashboard input",
+                "- `artifacts/default/metrics/metrics.json`: generated default-run metrics summary",
+                "- `artifacts/default/sample_alerts/scored_test_events.csv`: default dashboard input",
             ]
         ),
         encoding="utf-8",

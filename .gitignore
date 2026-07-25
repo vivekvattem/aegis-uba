@@ -11,3 +11,4 @@ data/inference/
 *.pyd
 *.DS_Store
 *.log
+submission/source_code.zip

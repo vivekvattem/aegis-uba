@@ -31,19 +31,30 @@ def chronological_split(frame: pd.DataFrame, split_cfg) -> tuple[pd.DataFrame, p
 
 def run_training_pipeline(config, root: str | Path) -> dict[str, float]:
     root = Path(root)
-    events = generate_synthetic_dataset(config.data, config.project["seed"])
-    save_datasets(events, root)
+    artifact_root = root / config.project["output_dir"]
+    events = generate_synthetic_dataset(config.data, config.project["seed"], split_config=config.split.model_dump())
+    save_datasets(events, root, subdir=config.project.get("run_name", "default"))
     summary = dataset_summary(events)
     signatures = behavioural_signature_checks(events)
-    save_validation_artifacts(summary, signatures, root)
+    save_validation_artifacts(summary, signatures, artifact_root)
     train_df, val_df, test_df = chronological_split(events, config.split)
     detector = HybridDetector(config.model_dump(), config.project["seed"])
-    fit_info = detector.fit(train_df, val_df)
+    late_entities = sorted(pd.concat([val_df, test_df]).loc[pd.concat([val_df, test_df])["is_anomaly"] == 1, "entity_id"].unique().tolist())
+    all_entities = sorted(events["entity_id"].unique().tolist())
+    holdout_n = max(1, int(len(all_entities) * config.features.get("cold_start_holdout_fraction", 0.0)))
+    cold_start_entities = set(late_entities[:holdout_n])
+    if len(cold_start_entities) < holdout_n:
+        for entity_id in all_entities:
+            if entity_id not in cold_start_entities:
+                cold_start_entities.add(entity_id)
+            if len(cold_start_entities) >= holdout_n:
+                break
+    fit_info = detector.fit(train_df, val_df, cold_start_entities=cold_start_entities)
     scored_test = detector.score(test_df, update_profiles=True)
-    detector.save(root)
-    metrics_dir = root / "artifacts" / "metrics"
-    figures_dir = root / "artifacts" / "figures"
-    sample_dir = root / "artifacts" / "sample_alerts"
+    detector.save(artifact_root)
+    metrics_dir = artifact_root / "metrics"
+    figures_dir = artifact_root / "figures"
+    sample_dir = artifact_root / "sample_alerts"
     metrics_dir.mkdir(parents=True, exist_ok=True)
     figures_dir.mkdir(parents=True, exist_ok=True)
     sample_dir.mkdir(parents=True, exist_ok=True)
@@ -51,7 +62,7 @@ def run_training_pipeline(config, root: str | Path) -> dict[str, float]:
     y_score = scored_test["risk_score"].to_numpy() / 100.0
     binary = binary_metrics(y_true, y_score, detector.threshold / 100.0)
     alert_budget = alert_budget_metrics(y_true, y_score, config.risk["alert_budget_top_pct"])
-    anomalies = scored_test[scored_test["is_anomaly"] == 1].copy()
+    anomalies = scored_test[(scored_test["is_anomaly"] == 1) & (scored_test["label"] != "insider_drift")].copy()
     if anomalies.empty:
         multi = {"macro_f1": 0.0, "weighted_f1": 0.0}
         cls_report = pd.DataFrame(columns=["label", "precision", "recall", "f1-score", "support"])
@@ -78,7 +89,7 @@ def run_training_pipeline(config, root: str | Path) -> dict[str, float]:
         pd.DataFrame().to_csv(metrics_dir / "confusion_matrix.csv")
     (sample_dir / "sample_alerts.json").write_text(json.dumps(sample_alerts, indent=2, default=str), encoding="utf-8")
     save_score_histogram(scored_test, figures_dir / "risk_score_histogram.png")
-    replay_metrics = detector.replay(scored_test)
+    replay_metrics = detector.replay(test_df)
     save_json(replay_metrics, metrics_dir / "latency_metrics.json")
 
     def _variant_scores(scored: pd.DataFrame, variant: str) -> np.ndarray:
@@ -141,14 +152,30 @@ def run_training_pipeline(config, root: str | Path) -> dict[str, float]:
         ]
     )
     split_info.to_csv(metrics_dir / "split_summary.csv", index=False)
+    split_label_counts = []
+    for split_name, split_frame in [("train", train_df), ("validation", val_df), ("test", test_df)]:
+        counts = split_frame["label"].value_counts().to_dict()
+        for label, count in counts.items():
+            split_label_counts.append({"split": split_name, "label": label, "count": int(count)})
+    pd.DataFrame(split_label_counts).to_csv(metrics_dir / "split_label_counts.csv", index=False)
     cold_start_eval = {
+        "cold_start_entities": int(len(detector.cold_start_entities)),
         "cold_start_events": int(scored_test["cold_start"].sum()),
         "cold_start_mean_risk": float(scored_test.loc[scored_test["cold_start"] == 1, "risk_score"].mean()) if int(scored_test["cold_start"].sum()) else 0.0,
+        "cold_start_anomalous_mean_risk": float(scored_test.loc[(scored_test["cold_start"] == 1) & (scored_test["is_anomaly"] == 1), "risk_score"].mean()) if int(((scored_test["cold_start"] == 1) & (scored_test["is_anomaly"] == 1)).sum()) else 0.0,
+        "cold_start_normal_mean_risk": float(scored_test.loc[(scored_test["cold_start"] == 1) & (scored_test["is_anomaly"] == 0), "risk_score"].mean()) if int(((scored_test["cold_start"] == 1) & (scored_test["is_anomaly"] == 0)).sum()) else 0.0,
+        "cold_start_false_positive_rate": float((((scored_test["cold_start"] == 1) & (scored_test["is_anomaly"] == 0) & (scored_test["risk_score"] >= detector.threshold)).sum()) / max(1, ((scored_test["cold_start"] == 1) & (scored_test["is_anomaly"] == 0)).sum())),
     }
+    static_scored = detector.score(test_df, update_profiles=False)
     drift_eval = {
         "profile_updates_applied": int((scored_test["drift_badge"] == "stable").sum()),
         "high_risk_quarantine_threshold": float(config.risk["safe_profile_update_threshold"]),
+        "static_mean_risk": float(static_scored["risk_score"].mean()),
+        "adaptive_mean_risk": float(scored_test["risk_score"].mean()),
     }
     save_json(cold_start_eval, metrics_dir / "cold_start_metrics.json")
     save_json(drift_eval, metrics_dir / "drift_metrics.json")
+    latest_path = root / "artifacts" / "latest_run.json"
+    latest_path.parent.mkdir(parents=True, exist_ok=True)
+    latest_path.write_text(json.dumps({"artifact_root": str(artifact_root.relative_to(root)), "run_name": config.project.get("run_name", "default")}, indent=2), encoding="utf-8")
     return {**binary, **multi, **cls_summary, **fit_info, **replay_metrics, **alert_budget, **cold_start_eval, **drift_eval}

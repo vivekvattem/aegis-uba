@@ -82,7 +82,7 @@ def behavioural_signature_checks(events: pd.DataFrame) -> dict[str, dict]:
 
 def save_validation_artifacts(summary: dict, signatures: dict, root: str | Path) -> None:
     root = Path(root)
-    metrics_dir = root / "artifacts" / "metrics"
+    metrics_dir = root / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
     (metrics_dir / "dataset_summary.json").write_text(__import__("json").dumps(summary, indent=2), encoding="utf-8")
     (metrics_dir / "behavioural_signatures.json").write_text(__import__("json").dumps(signatures, indent=2), encoding="utf-8")
