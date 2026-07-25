@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import pandas as pd
 import plotly.express as px
@@ -12,7 +13,8 @@ from styles import CYBER_CSS
 
 ROOT = Path(__file__).resolve().parents[1]
 SCORED_PATH = ROOT / "artifacts" / "sample_alerts" / "scored_test_events.csv"
-METRICS_PATH = ROOT / "artifacts" / "metrics" / "evaluation_metrics.csv"
+METRICS_PATH = ROOT / "artifacts" / "metrics" / "metrics.json"
+SAMPLE_ALERTS_PATH = ROOT / "artifacts" / "sample_alerts" / "sample_alerts.json"
 
 st.set_page_config(page_title="AegisUEBA", layout="wide")
 st.markdown(CYBER_CSS, unsafe_allow_html=True)
@@ -24,6 +26,7 @@ if not SCORED_PATH.exists():
 
 frame = pd.read_csv(SCORED_PATH)
 frame["timestamp"] = pd.to_datetime(frame["timestamp"])
+demo_mode = st.sidebar.checkbox("Evaluation / demo mode", value=False, help="Reveal ground truth fields for demo and evaluation only.")
 render_metric_row(frame)
 
 tabs = st.tabs(["Security Overview", "Ranked Alert Queue", "Alert Investigation", "Entity Behaviour", "Model Performance", "Live Replay"])
@@ -39,13 +42,23 @@ with tabs[1]:
     severity = st.selectbox("Severity filter", ["all", "critical", "high", "medium", "low"])
     view = frame if severity == "all" else frame[frame["severity"] == severity]
     view = view.sort_values(["risk_score", "timestamp"], ascending=[False, False])
-    st.dataframe(view[["timestamp", "entity_id", "entity_type", "risk_score", "severity", "predicted_attack_type", "classifier_confidence", "reasons"]], use_container_width=True)
+    cols = ["timestamp", "entity_id", "entity_type", "risk_score", "severity", "predicted_attack_type", "classifier_confidence", "reasons"]
+    if demo_mode:
+        cols.extend(["label", "is_anomaly"])
+    st.dataframe(view[cols], use_container_width=True)
+    st.download_button("Export filtered alerts CSV", view[cols].to_csv(index=False).encode("utf-8"), file_name="filtered_alerts.csv", mime="text/csv")
 
 with tabs[2]:
     st.subheader("Alert Investigation")
     selected_event = st.selectbox("Event", frame.sort_values("risk_score", ascending=False)["event_id"].head(200))
     selected = frame[frame["event_id"] == selected_event].iloc[0]
-    st.json(selected.to_dict())
+    payload = selected.to_dict()
+    if not demo_mode:
+        payload.pop("label", None)
+        payload.pop("is_anomaly", None)
+        payload.pop("anomaly_type", None)
+        payload.pop("synthetic_attack_id", None)
+    st.json(payload)
 
 with tabs[3]:
     st.subheader("Entity Behaviour")
@@ -56,10 +69,13 @@ with tabs[3]:
 with tabs[4]:
     st.subheader("Model Performance")
     if METRICS_PATH.exists():
-        metrics = pd.read_csv(METRICS_PATH)
-        st.dataframe(metrics, use_container_width=True)
+        metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        st.json(metrics)
     else:
         st.info("Evaluation metrics will appear after the pipeline runs.")
+    if SAMPLE_ALERTS_PATH.exists():
+        st.subheader("Sample Alerts By Attack Type")
+        st.json(json.loads(SAMPLE_ALERTS_PATH.read_text(encoding="utf-8")))
 
 with tabs[5]:
     st.subheader("Live Replay")

@@ -2,6 +2,17 @@
 
 AegisUEBA is a CPU-friendly UEBA demo system for synthetic cybersecurity telemetry. It generates behavioral event streams, injects attack campaigns, trains a hybrid anomaly detector, produces explainable risk scores, and exposes analyst artifacts for evaluation and a Streamlit dashboard.
 
+Latest verified fast-run results on July 25, 2026:
+
+- Events: `7,930`
+- Anomalies: `158` (`1.99%`)
+- PR-AUC: `0.1955`
+- ROC-AUC: `0.9337`
+- Precision at top `1%` alert budget: `0.1875`
+- Recall at top `1%` alert budget: `0.125`
+- Streamlit health check: `HTTP 200` on `localhost:8501`
+- Test status: `8 passed`
+
 ## Quick Start
 
 ```bash
@@ -34,3 +45,9 @@ pytest -q
 ## Project Layout
 
 The implementation follows the requested separation across `src/`, `scripts/`, `dashboard/`, `tests/`, `docs/`, `artifacts/`, `data/`, and `submission/`.
+
+## Current Limits
+
+- The fast configuration is verified; the default configuration is configured for a larger run but was not fully executed in this continuation.
+- Classification quality on rare anomaly classes is still weak, with a high `unknown_anomaly` rate in the current fast-run artifacts.
+- No official organiser PowerPoint template was present in or near the repository on July 25, 2026, so only the outline is included.

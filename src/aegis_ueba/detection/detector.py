@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import joblib
 import numpy as np
@@ -129,6 +130,10 @@ class HybridDetector:
                 "classifier_confidence": float(confidence[i]),
             }
             risk = combine_scores(components, self.config["risk"]["weights"])
+            component_contributions = {
+                key: float(self.config["risk"]["weights"][key] * value * 100.0)
+                for key, value in components.items()
+            }
             explanation_text = build_explanations(reasons)
             outputs.append(
                 {
@@ -146,6 +151,10 @@ class HybridDetector:
                     "cold_start": int(entity_meta["cold_start"]),
                     "drift_badge": "warming" if entity_meta["cold_start"] else "stable",
                     "reasons": " | ".join(explanation_text),
+                    "risk_components": component_contributions,
+                    "risk_component_total": components,
+                    "top_contributing_factors": self._top_factors(component_contributions),
+                    "profile_confidence": float(1.0 - entity_meta["cold_start"]),
                 }
             )
             if update_profiles:
@@ -154,6 +163,11 @@ class HybridDetector:
                     self.entity_store.update(row, alpha=self.config["drift"]["ewma_alpha"])
                     self.peer_store.update(row)
         return pd.DataFrame(outputs)
+
+    @staticmethod
+    def _top_factors(component_contributions: dict[str, float]) -> list[dict[str, Any]]:
+        ranked = sorted(component_contributions.items(), key=lambda item: item[1], reverse=True)
+        return [{"component": key, "contribution": float(value)} for key, value in ranked[:3]]
 
     def save(self, root: str | Path) -> DetectionArtifacts:
         root = Path(root)
