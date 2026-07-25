@@ -1,0 +1,70 @@
+project:
+  name: aegis-ueba
+  seed: 42
+  output_dir: artifacts
+
+data:
+  entities: 120
+  days: 30
+  events_per_entity_min: 45
+  events_per_entity_max: 90
+  anomaly_rate: 0.02
+  entity_type_mix:
+    user: 0.72
+    service_account: 0.14
+    edge_device: 0.14
+  attack_type_weights:
+    brute_force: 0.18
+    impossible_travel: 0.15
+    credential_stuffing: 0.14
+    lateral_movement: 0.18
+    device_spoofing: 0.15
+    low_and_slow_exfiltration: 0.15
+    insider_drift: 0.05
+  sensitive_resource_ratio: 0.15
+
+features:
+  rolling_windows_minutes: [5, 15, 60, 1440]
+  velocity_kmh_threshold: 900.0
+  sequence_length: 10
+  min_history_for_entity_profile: 6
+  peer_group_columns: ["entity_type", "role"]
+
+split:
+  train: 0.6
+  validation: 0.2
+  test: 0.2
+
+models:
+  isolation_contamination: 0.03
+  gru_hidden_dim: 24
+  gru_num_layers: 1
+  gru_dropout: 0.1
+  gru_lr: 0.001
+  gru_epochs: 4
+  gru_batch_size: 64
+  early_stopping_patience: 2
+  classifier_max_depth: 8
+  classifier_estimators: 120
+  classifier_unknown_threshold: 0.45
+
+risk:
+  alert_budget_top_pct: 0.01
+  threshold_percentile: 0.99
+  safe_profile_update_threshold: 35
+  weights:
+    entity_deviation: 0.22
+    peer_deviation: 0.12
+    sequence_anomaly: 0.22
+    contextual_evidence: 0.22
+    auth_severity: 0.10
+    resource_criticality: 0.06
+    classifier_confidence: 0.06
+
+drift:
+  ewma_alpha: 0.15
+  min_trusted_observations: 4
+
+replay:
+  micro_batch_size: 1
+  sleep_seconds: 0.0
