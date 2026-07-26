@@ -218,12 +218,32 @@ class HybridDetector:
             bundle_path=bundle_path,
         )
 
+    @classmethod
+    def load(cls, root: str | Path) -> "HybridDetector":
+        root = Path(root)
+        transformer = joblib.load(root / "preprocessors" / "transformer.joblib")
+        bundle = joblib.load(root / "models" / "detector_bundle.joblib")
+        detector = cls(bundle["config"], bundle["seed"])
+        detector.transformer = transformer
+        detector.statistical = bundle["statistical"]
+        detector.entity_store = bundle["entity_store"]
+        detector.peer_store = bundle["peer_store"]
+        detector.isolation = bundle["isolation"]
+        detector.gru = bundle["gru"]
+        detector.classifier = bundle["classifier"]
+        detector.threshold = bundle["threshold"]
+        detector.sequence_threshold = bundle["sequence_threshold"]
+        return detector
+
     def replay(self, frame: pd.DataFrame) -> dict[str, float]:
         metrics = replay_events(frame, scorer=lambda batch: self.score(batch, update_profiles=False), batch_size=max(1, self.config["replay"].get("micro_batch_size", 1)))
         return {
+            "events_processed": metrics.events_processed,
             "total_duration_seconds": metrics.total_duration_seconds,
             "avg_latency_ms": metrics.avg_latency_ms,
             "p50_latency_ms": metrics.p50_latency_ms,
             "p95_latency_ms": metrics.p95_latency_ms,
             "events_per_second": metrics.events_per_second,
+            "batch_size": metrics.batch_size,
+            "included_processing_stages": metrics.included_processing_stages,
         }

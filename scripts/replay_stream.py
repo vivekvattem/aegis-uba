@@ -12,7 +12,7 @@ sys.path.append(str(ROOT / "src"))
 os.environ.setdefault("MPLCONFIGDIR", str(ROOT / ".mplconfig"))
 
 from aegis_ueba.config import load_config
-from aegis_ueba.streaming.replay import replay_events
+from aegis_ueba.detection.detector import HybridDetector
 
 
 def main() -> None:
@@ -20,9 +20,11 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     args = parser.parse_args()
     config = load_config(ROOT / args.config)
-    path = ROOT / config.project["output_dir"] / "sample_alerts" / "scored_test_events.csv"
+    artifact_root = ROOT / config.project["output_dir"]
+    path = artifact_root / "sample_alerts" / "scored_test_events.csv"
     frame = pd.read_csv(path)
-    metrics = replay_events(frame)
+    detector = HybridDetector.load(artifact_root)
+    metrics = detector.replay(frame)
     print(metrics)
 
 

@@ -1,0 +1,23 @@
+{
+  "measured_runs": 3,
+  "event_count_constant": true,
+  "events_processed_per_run": 14085,
+  "throughput_mean_events_per_second": 364.463546216249,
+  "throughput_stddev_events_per_second": 17.87614661522758,
+  "throughput_min_events_per_second": 346.67477740425153,
+  "throughput_max_events_per_second": 382.4258077676491,
+  "mean_p50_latency_ms_per_event": 2.52257972000128,
+  "mean_p95_latency_ms_per_event": 4.15431472666872,
+  "execution_device": "cpu",
+  "units": {
+    "events_processed": "events",
+    "total_duration_seconds": "seconds",
+    "mean_latency_ms_per_event": "milliseconds per event",
+    "p50_latency_ms_per_event": "milliseconds per event",
+    "p95_latency_ms_per_event": "milliseconds per event",
+    "throughput_events_per_second": "events per second"
+  },
+  "warmup_policy": "One warm-up replay was executed before the three measured runs and excluded from summary statistics.",
+  "included_processing_stages": "Saved-model scoring replay only, including batch iteration, feature engineering, model scoring, and explanation generation. Excludes training time.",
+  "errors_encountered": []
+}

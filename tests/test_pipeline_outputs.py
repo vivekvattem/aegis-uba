@@ -13,16 +13,17 @@ from aegis_ueba.evaluation.pipeline import run_training_pipeline
 def test_pipeline_writes_required_metric_files() -> None:
     config = load_config(ROOT / "configs" / "fast.yaml")
     run_training_pipeline(config, ROOT)
+    artifact_root = ROOT / config.project["output_dir"]
     required = [
-        ROOT / "artifacts" / "metrics" / "metrics.json",
-        ROOT / "artifacts" / "metrics" / "binary_metrics.csv",
-        ROOT / "artifacts" / "metrics" / "classification_report.csv",
-        ROOT / "artifacts" / "metrics" / "confusion_matrix.csv",
-        ROOT / "artifacts" / "metrics" / "alert_budget_metrics.csv",
-        ROOT / "artifacts" / "metrics" / "latency_metrics.json",
-        ROOT / "artifacts" / "metrics" / "ablation_results.csv",
-        ROOT / "artifacts" / "figures" / "ablation_comparison.png",
-        ROOT / "artifacts" / "sample_alerts" / "sample_alerts.json",
+        artifact_root / "metrics" / "metrics.json",
+        artifact_root / "metrics" / "binary_metrics.csv",
+        artifact_root / "metrics" / "classification_report.csv",
+        artifact_root / "metrics" / "confusion_matrix.csv",
+        artifact_root / "metrics" / "alert_budget_metrics.csv",
+        artifact_root / "metrics" / "latency_metrics.json",
+        artifact_root / "metrics" / "ablation_results.csv",
+        artifact_root / "figures" / "ablation_comparison.png",
+        artifact_root / "sample_alerts" / "sample_alerts.json",
     ]
     for path in required:
         assert path.exists(), str(path)
